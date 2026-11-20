@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Painel da loja</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head><body>
+<header><h1>Painel</h1></header>
+<main style="padding-bottom:40px">
+<form id="login" class="card" hidden><h2 style="margin-top:0">Entrar</h2>
+ <label class="f" for="em">E-mail</label><input type="email" id="em" required>
+ <label class="f" for="pw" style="margin-top:8px">Senha</label><input type="password" id="pw" required>
+ <p><button class="btn" style="background:var(--berry);color:#fff">Entrar</button></p><div class="msg" id="le"></div></form>
+<div id="panel" hidden>
+ <div class="tabs"><button id="t1" class="on">Pedidos</button><button id="t2">Cardápio e preços</button></div>
+ <section id="orders"></section>
+ <section id="menu" hidden>
+  <h2>Tamanhos</h2><div id="sizes"></div><button class="btn alt" data-add="sizes">+ Tamanho</button>
+  <h2>Complementos</h2><div id="tops"></div><button class="btn alt" data-add="tops">+ Complemento</button>
+  <h2>Loja</h2>
+  <label class="opt"><span class="l"><input type="checkbox" id="open"><b>Loja aberta (aceitando pedidos)</b></span></label>
+  <label class="f" for="fee" style="margin-top:10px">Taxa de entrega (R$)</label><input type="number" step="0.5" id="fee">
+  <label class="f" for="pix" style="margin-top:10px">Chave Pix</label><input type="text" id="pix">
+  <label class="f" for="pixNome" style="margin-top:10px">Nome do recebedor (como no Pix)</label><input type="text" id="pixNome">
+  <label class="f" for="pixCidade" style="margin-top:10px">Cidade</label><input type="text" id="pixCidade">
+  <label class="f" for="whats" style="margin-top:10px">WhatsApp (DDI+DDD+número, só dígitos)</label><input type="text" id="whats">
+  <p><button class="btn" id="save" style="background:var(--berry);color:#fff">Salvar alterações</button> <span id="ok" style="color:var(--ok);font-weight:600"></span></p>
+ </section>
+ <p><button class="btn alt" id="out">Sair</button></p>
+</div></main>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="config.js"></script>
+<script>
+const C=CONFIG,$=s=>document.querySelector(s),R=v=>"R$ "+Number(v).toFixed(2).replace(".",",");
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+firebase.initializeApp(C.firebase);const db=firebase.firestore(),au=firebase.auth();
+let M={sizes:[],tops:[],fee:5,open:true,pix:C.pix.chave,pixNome:C.pix.nome,pixCidade:C.pix.cidade,whats:C.whatsapp},unsub=null;
+au.onAuthStateChanged(u=>{$("#login").hidden=!!u;$("#panel").hidden=!u;if(u)start();else if(unsub)unsub()});
+$("#login").onsubmit=e=>{e.preventDefault();au.signInWithEmailAndPassword($("#em").value,$("#pw").value).catch(()=>$("#le").textContent="E-mail ou senha incorretos.")};
+$("#out").onclick=()=>au.signOut();
+$("#t1").onclick=()=>tab(1);$("#t2").onclick=()=>tab(2);
+function tab(n){$("#orders").hidden=n!=1;$("#menu").hidden=n!=2;$("#t1").className=n==1?"on":"";$("#t2").className=n==2?"on":""}
+async function start(){
+ const d=await db.collection("config").doc("menu").get();if(d.exists)M={...M,...d.data()};
+ if(!M.sizes.length&&!d.exists){M.sizes=[{n:"300 ml",p:12},{n:"500 ml",p:16},{n:"700 ml",p:20}];M.tops=[{n:"Granola",p:2},{n:"Leite condensado",p:3}]}
+ drawMenu();
+ unsub=db.collection("orders").orderBy("ts","desc").limit(60).onSnapshot(s=>drawOrders(s.docs.map(d=>d.data())));
+}
+const row=(k,i,s)=>`<div class="row"><input type="text" value="${esc(s.n)}" data-k="${k}" data-i="${i}" data-f="n" aria-label="Nome"><input type="number" step="0.5" value="${s.p}" data-k="${k}" data-i="${i}" data-f="p" aria-label="Preço"><button data-del="${k}:${i}" aria-label="Remover">✕</button></div>`;
+function drawMenu(){
+ $("#sizes").innerHTML=M.sizes.map((s,i)=>row("sizes",i,s)).join("");
+ $("#tops").innerHTML=M.tops.map((s,i)=>row("tops",i,s)).join("");
+ for(const f of ["fee","pix","pixNome","pixCidade","whats"])$("#"+f).value=M[f]??"";
+ $("#open").checked=!!M.open;
+}
+$("#menu").addEventListener("input",e=>{const t=e.target;if(t.dataset.k){M[t.dataset.k][+t.dataset.i][t.dataset.f]=t.dataset.f=="p"?+t.value:t.value}});
+$("#menu").addEventListener("click",e=>{
+ const a=e.target.dataset.add,d=e.target.dataset.del;
+ if(a){M[a].push({n:"",p:0});drawMenu()}
+ if(d){const[k,i]=d.split(":");M[k].splice(+i,1);drawMenu()}
+});
+$("#save").onclick=async()=>{
+ for(const f of ["pix","pixNome","pixCidade","whats"])M[f]=$("#"+f).value.trim();
+ M.fee=+$("#fee").value||0;M.open=$("#open").checked;
+ M.sizes=M.sizes.filter(x=>x.n.trim());M.tops=M.tops.filter(x=>x.n.trim());
+ await db.collection("config").doc("menu").set(M);drawMenu();$("#ok").textContent="Salvo!";setTimeout(()=>$("#ok").textContent="",2500);
+};
+const STS=[["pago","Pagamento confirmado"],["em preparo","Em preparo"],["saiu para entrega","Saiu p/ entrega"],["entregue","Entregue"]];
+function drawOrders(l){
+ $("#orders").innerHTML=l.length?l.map(o=>`<div class="card ord"><h3>${esc(o.nome)} · ${R(o.total)}</h3><span class="st">${esc(o.status)}</span>
+ <p style="margin:8px 0 0">${o.qtd}x batida ${esc(o.tamanho)}${o.comps?.length?" + "+esc(o.comps.join(", ")):""}<br>${esc(o.rua)}, ${esc(o.num)} - ${esc(o.bairro)}${o.ref?" ("+esc(o.ref)+")":""}<br>${o.obs?"Obs: "+esc(o.obs)+"<br>":""}<a href="https://wa.me/55${esc(o.tel.replace(/\D/g,""))}">${esc(o.tel)}</a> · ${new Date(o.ts).toLocaleString("pt-BR")} · ${esc(o.id)}</p>
+ <div class="acts">${STS.map(s=>`<button data-o="${o.id}" data-s="${s[0]}">${s[1]}</button>`).join("")}<button class="x" data-o="${o.id}" data-s="cancelado">Cancelar</button></div></div>`).join(""):"<p>Nenhum pedido ainda.</p>";
+}
+$("#orders").addEventListener("click",e=>{if(e.target.dataset.o)db.collection("orders").doc(e.target.dataset.o).update({status:e.target.dataset.s})});
+</script></body></html>
