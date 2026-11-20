@@ -1,0 +1,11 @@
+{
+  "loja": "Batida de Açaí",
+  "sizes": [{"n":"300 ml","p":12},{"n":"500 ml","p":16},{"n":"700 ml","p":20}],
+  "tops": [{"n":"Leite em pó","p":2},{"n":"Granola","p":2},{"n":"Banana","p":2},{"n":"Leite condensado","p":3},{"n":"Morango","p":3},{"n":"Paçoca","p":3}],
+  "fee": 5,
+  "open": true,
+  "pix": "",
+  "pixNome": "SEU NOME",
+  "pixCidade": "SUA CIDADE",
+  "whats": "5583996230901"
+}

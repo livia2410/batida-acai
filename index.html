@@ -1,85 +1,69 @@
 <!doctype html>
 <html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Peça sua batida de açaí</title>
+<title>Batida de Açaí</title>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head><body>
 <header><h1 id="loja">Batida de Açaí</h1><p>Monte a sua, pague no Pix e receba em casa.</p></header>
-<main id="app">
+<main>
  <div id="closed" class="card" hidden>Estamos fechados no momento. Volte mais tarde!</div>
- <form id="f" autocomplete="on">
+ <form id="f">
   <h2>Tamanho</h2><div class="opts" id="sizes"></div>
   <h2>Complementos <small style="font-weight:400;color:#5b4470">(opcional, com adicional)</small></h2><div class="opts" id="tops"></div>
   <h2>Quantidade</h2><div class="qty"><button type="button" id="mn" aria-label="Diminuir">−</button><b id="q">1</b><button type="button" id="pl" aria-label="Aumentar">+</button></div>
   <h2>Seus dados</h2>
   <div class="g2">
    <div class="w"><label class="f" for="nome">Nome</label><input type="text" id="nome" required autocomplete="name"></div>
-   <div class="w"><label class="f" for="tel">WhatsApp</label><input type="tel" id="tel" required autocomplete="tel" placeholder="(83) 99999-9999"></div>
-   <div class="w"><label class="f" for="rua">Rua</label><input type="text" id="rua" required autocomplete="address-line1"></div>
+   <div class="w"><label class="f" for="rua">Rua</label><input type="text" id="rua" required></div>
    <div><label class="f" for="num">Número</label><input type="text" id="num" required></div>
    <div><label class="f" for="bai">Bairro</label><input type="text" id="bai" required></div>
    <div class="w"><label class="f" for="ref">Complemento / ponto de referência</label><input type="text" id="ref"></div>
-   <div class="w"><label class="f" for="obs">Observações do pedido</label><textarea id="obs"></textarea></div>
+   <div class="w"><label class="f" for="obs">Observações</label><textarea id="obs"></textarea></div>
   </div>
   <div class="msg" id="err" role="alert"></div>
  </form>
 </main>
-<div class="bar"><div><span><small id="det">Entrega inclusa no total</small><strong id="tot">R$ 0,00</strong></span><button class="btn" id="go" form="f">Pagar com Pix</button></div></div>
-
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<div class="bar"><div><span><small id="det"></small><strong id="tot">R$ 0,00</strong></span><button class="btn" id="go" form="f">Pagar com Pix</button></div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="config.js"></script>
 <script>
-const C=CONFIG,$=s=>document.querySelector(s),R=v=>"R$ "+Number(v).toFixed(2).replace(".",",");
+const $=s=>document.querySelector(s),R=v=>"R$ "+Number(v).toFixed(2).replace(".",",");
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-let M={sizes:[{n:"300 ml",p:12},{n:"500 ml",p:16},{n:"700 ml",p:20}],tops:[{n:"Leite em pó",p:2},{n:"Granola",p:2},{n:"Banana",p:2},{n:"Leite condensado",p:3},{n:"Morango",p:3},{n:"Paçoca",p:3}],fee:5,open:true,pix:C.pix.chave,pixNome:C.pix.nome,pixCidade:C.pix.cidade,whats:C.whatsapp};
-let db=null,qty=1;
-if(C.firebase.apiKey){firebase.initializeApp(C.firebase);db=firebase.firestore()}
-$("#loja").textContent=C.loja;document.title=C.loja;
+let M=null,qty=1;
 async function load(){
- if(db){try{const d=await db.collection("config").doc("menu").get();if(d.exists)M={...M,...d.data()}}catch(e){console.warn(e)}}
+ try{M=await (await fetch("menu.json?t="+Date.now())).json()}catch(e){$("#err").textContent="Não foi possível carregar o cardápio.";return}
+ $("#loja").textContent=M.loja;document.title=M.loja;
  $("#sizes").innerHTML=M.sizes.map((s,i)=>`<label class="opt"><span class="l"><input type="radio" name="sz" value="${i}" ${i==0?"checked":""}><b>${esc(s.n)}</b></span><span>${R(s.p)}</span></label>`).join("");
  $("#tops").innerHTML=M.tops.map((s,i)=>`<label class="opt"><span class="l"><input type="checkbox" name="tp" value="${i}"><b>${esc(s.n)}</b></span><span>+ ${R(s.p)}</span></label>`).join("");
  $("#det").textContent=M.fee>0?"Inclui entrega de "+R(M.fee):"Entrega grátis";
  if(!M.open){$("#closed").hidden=false;$("#go").disabled=true}
- calc();
+ upd();
 }
 function calc(){
- const s=M.sizes[+(document.querySelector("[name=sz]:checked")||{value:0}).value]||{p:0};
+ const s=M.sizes[+(document.querySelector("[name=sz]:checked")||{value:0}).value]||{p:0,n:""};
  const t=[...document.querySelectorAll("[name=tp]:checked")].map(e=>M.tops[+e.value]);
- const unit=s.p+t.reduce((a,x)=>a+x.p,0),sub=unit*qty;
- return{s,t,unit,sub,fee:+M.fee||0,total:sub+(+M.fee||0)};
+ const sub=(s.p+t.reduce((a,x)=>a+x.p,0))*qty,fee=+M.fee||0;
+ return{s,t,sub,fee,total:sub+fee};
 }
-document.addEventListener("change",()=>$("#tot").textContent=R(calc().total));
-$("#pl").onclick=()=>{qty=Math.min(20,qty+1);$("#q").textContent=qty;$("#tot").textContent=R(calc().total)};
-$("#mn").onclick=()=>{qty=Math.max(1,qty-1);$("#q").textContent=qty;$("#tot").textContent=R(calc().total)};
-setTimeout(()=>$("#tot").textContent=R(calc().total),0);
-
-// ---- Pix (copia e cola) ----
+function upd(){if(M)$("#tot").textContent=R(calc().total)}
+document.addEventListener("change",upd);
+$("#pl").onclick=()=>{qty=Math.min(20,qty+1);$("#q").textContent=qty;upd()};
+$("#mn").onclick=()=>{qty=Math.max(1,qty-1);$("#q").textContent=qty;upd()};
 const tlv=(i,v)=>i+String(v.length).padStart(2,"0")+v;
 const ascii=s=>s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Za-z0-9 ]/g,"").toUpperCase();
 function crc(s){let c=0xFFFF;for(let i=0;i<s.length;i++){c^=s.charCodeAt(i)<<8;for(let j=0;j<8;j++)c=c&0x8000?((c<<1)^0x1021):c<<1;c&=0xFFFF}return c.toString(16).toUpperCase().padStart(4,"0")}
 function pix(key,nome,cidade,val,txid){
- const acc=tlv("00","br.gov.bcb.pix")+tlv("01",key);
- const p=tlv("00","01")+tlv("26",acc)+tlv("52","0000")+tlv("53","986")+tlv("54",val.toFixed(2))+tlv("58","BR")+tlv("59",ascii(nome).slice(0,25))+tlv("60",ascii(cidade).slice(0,15))+tlv("62",tlv("05",txid))+"6304";
+ const p=tlv("00","01")+tlv("26",tlv("00","br.gov.bcb.pix")+tlv("01",key))+tlv("52","0000")+tlv("53","986")+tlv("54",val.toFixed(2))+tlv("58","BR")+tlv("59",ascii(nome).slice(0,25))+tlv("60",ascii(cidade).slice(0,15))+tlv("62",tlv("05",txid))+"6304";
  return p+crc(p);
 }
-
-$("#f").onsubmit=async e=>{
- e.preventDefault();$("#err").textContent="";
+$("#f").onsubmit=e=>{
+ e.preventDefault();
  if(!M.pix){$("#err").textContent="A loja ainda não configurou a chave Pix.";return}
- const c=calc(),id="PED"+Date.now().toString(36).toUpperCase();
- const order={id,ts:Date.now(),nome:$("#nome").value.trim(),tel:$("#tel").value.trim(),rua:$("#rua").value.trim(),num:$("#num").value.trim(),bairro:$("#bai").value.trim(),ref:$("#ref").value.trim(),obs:$("#obs").value.trim(),
-  tamanho:c.s.n,comps:c.t.map(x=>x.n),qtd:qty,subtotal:c.sub,entrega:c.fee,total:c.total,status:"aguardando pagamento"};
- $("#go").disabled=true;
- try{if(db)await db.collection("orders").doc(id).set(order)}catch(x){$("#go").disabled=false;$("#err").textContent="Não foi possível enviar o pedido. Tente novamente.";return}
- const code=pix(M.pix,M.pixNome,M.pixCidade,c.total,id);
- const txt=`Olá! Fiz o pedido ${id} (${qty}x batida ${order.tamanho}${order.comps.length?" + "+order.comps.join(", "):""}). Total ${R(c.total)}. Já paguei no Pix.`;
- document.body.innerHTML=`<header><h1>Pedido ${id.slice(3)}</h1><p>Falta só o pagamento.</p></header><main><div class="card pay"><h2 style="margin-top:0">Pague ${R(c.total)} no Pix</h2><div id="qr"></div><p>Ou copie o código e cole no app do seu banco:</p><textarea readonly id="cc">${code}</textarea><p><button class="btn alt" id="cp">Copiar código Pix</button></p><p><a class="btn" style="display:inline-block;text-decoration:none" href="https://wa.me/${M.whats}?text=${encodeURIComponent(txt)}">Já paguei, avisar no WhatsApp</a></p><p style="color:#5b4470">Vamos preparar assim que confirmarmos o pagamento.</p></div></main>`;
+ const c=calc(),id="PED"+Date.now().toString(36).toUpperCase().slice(-5),code=pix(M.pix,M.pixNome,M.pixCidade,c.total,id);
+ const msg=`*Novo pedido ${id}*\n${qty}x Batida ${c.s.n}\nComplementos: ${c.t.length?c.t.map(x=>x.n).join(", "):"nenhum"}\n\n*Cliente:* ${$("#nome").value}\n*Endereço:* ${$("#rua").value}, ${$("#num").value} - ${$("#bai").value}${$("#ref").value?" ("+$("#ref").value+")":""}\n${$("#obs").value?"*Obs:* "+$("#obs").value+"\n":""}\nSubtotal: ${R(c.sub)}\nEntrega: ${R(c.fee)}\n*Total: ${R(c.total)}*\nPagamento: Pix (já paguei)`;
+ document.body.innerHTML=`<header><h1>Pague ${R(c.total)}</h1><p>Pedido ${id}</p></header><main><div class="card pay"><h2 style="margin-top:0">1. Pague no Pix</h2><div id="qr"></div><p>Ou copie o código e cole no app do seu banco:</p><textarea readonly>${code}</textarea><p><button class="btn alt" id="cp">Copiar código Pix</button></p><h2>2. Depois de pagar</h2><a class="btn" style="display:inline-block;text-decoration:none" href="https://wa.me/${M.whats}?text=${encodeURIComponent(msg)}">Enviar pedido no WhatsApp</a><p style="color:#5b4470">O pedido só chega para nós depois que você enviar a mensagem.</p></div></main>`;
  new QRCode($("#qr"),{text:code,width:220,height:220,correctLevel:QRCode.CorrectLevel.M});
- $("#cp").onclick=()=>{navigator.clipboard.writeText(code).then(()=>$("#cp").textContent="Código copiado!")};
+ $("#cp").onclick=()=>navigator.clipboard.writeText(code).then(()=>$("#cp").textContent="Código copiado!");
 };
 load();
 </script></body></html>
